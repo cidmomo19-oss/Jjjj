@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Videy - Free and Simple Video Hosting</title>
+    
+    <!-- FAVICON ASLI -->
+    <link rel="icon" type="image/x-icon" href="https://videy.co/favicon.ico" />
+    
+    <!-- FONT POPPINS -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- LIBRARY -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <style>
+        body { font-family: 'Poppins', sans-serif; }
+        
+        /* Definisi warna asli Videy */
+        .text-muted-foreground { color: #6b7280; } 
+        .text-secondary-foreground { color: #1f2937; }
+        
+        /* OVERLAY LOCKER (Di atas Video) */
+        #locker-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 50; border-radius: inherit;
+            transition: opacity 0.5s ease;
+        }
+
+        /* DOWNLOAD POPUP MODAL */
+        #dl-popup {
+            display: none; position: fixed; inset: 0; 
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(4px);
+            z-index: 9999; align-items: center; justify-content: center;
+        }
+
+        /* ANIMASI SHAKE (Untuk Error) */
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .shake { animation: shake 0.3s ease-in-out; }
+
+        /* ADBLOCK SCREEN (High Z-Index & Background Solid) */
+        #adblock-screen { 
+            display: none; /* Default hide */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #fff; z-index: 2147483647; /* Max Z-Index */
+            align-items: center; justify-content: center; flex-direction: column; text-align: center; 
+        }
+    </style>
+  </head>
+  
+  <body data-version="v3.2-INDO-POPUP">
+    
+    <!-- 1. ADBLOCK SCREEN (BAHASA INDONESIA) -->
+    <div id="adblock-screen" class="p-6">
+        <svg class="w-16 h-16 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <h2 class="text-2xl font-bold mb-2 text-gray-900">AdBlock Terdeteksi</h2>
+        <p class="text-gray-500 mb-6">Mohon matikan AdBlock untuk memutar video.</p>
+        <button onclick="location.reload()" class="bg-gray-900 text-white px-8 py-3 rounded-full font-semibold hover:bg-gray-800 transition">Refresh Halaman</button>
+    </div>
+
+    <!-- 2. DOWNLOAD POPUP (MODAL BARU) -->
+    <div id="dl-popup">
+        <div class="bg-white p-6 rounded-2xl max-w-xs w-full text-center shadow-2xl relative">
+            <!-- Close Button -->
+            <button onclick="closeDlPopup()" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+
+            <div class="bg-gray-100 p-3 rounded-full inline-block mb-3">
+                <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            </div>
+            
+            <h3 class="text-lg font-bold text-gray-900 mb-1">Download Terkunci</h3>
+            <p class="text-xs text-gray-500 mb-5 leading-relaxed">
+                Untuk mendapatkan file, klik tombol di bawah, tunggu <b>8 detik</b> di halaman iklan, lalu kembali ke sini.
+            </p>
+
+            <button id="btn-popup-action" onclick="startDlProcess()" class="w-full bg-gray-900 text-white py-3 rounded-full font-semibold text-sm hover:bg-gray-800 transition">
+                Buka Link (8 Detik)
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. STRUKTUR UTAMA -->
+    <div id="root" style="opacity: 0; transition: opacity 0.5s;">
+        <div class="min-h-screen">
+            <div class="min-h-screen flex flex-col">
+                
+                <!-- HEADER -->
+                <header class="pt-3 pb-3 lg:pt-4 lg:pb-4">
+                    <div class="max-w-6xl mx-auto px-6 lg:px-8">
+                        <div class="flex items-center justify-between">
+                            <a href="/" class="flex items-center">
+                                <span class="font-['Poppins'] font-semibold text-[26px] tracking-[-2px] text-gray-900">videy</span>
+                            </a>
+                            <a href="#" class="flex items-center space-x-2 px-4 py-1.5 bg-gray-900 text-white font-semibold rounded-full hover:bg-gray-800 transition-colors text-[15px]">
+                                <span>Upload</span>
+                            </a>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- CONTENT -->
+                <div class="w-full max-w-[720px] mx-auto flex-grow px-0 md:px-4 md:mt-3">
+                    
+                    <!-- VIDEO WRAPPER -->
+                    <div class="w-full flex justify-center relative">
+                        <div class="w-full relative"> 
+                            
+                            <!-- OVERLAY LOCKER (VIDEO) -->
+                            <div id="locker-overlay">
+                                <div class="bg-white/10 p-3 rounded-full mb-4">
+                                    <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                                </div>
+                                <h3 class="text-white font-bold text-lg mb-1">Video Terkunci</h3>
+                                <p class="text-gray-400 text-xs mb-6">Buka akses untuk menonton.</p>
+                                
+                                <button onclick="startSmartUnlock()" class="bg-white text-black px-8 py-2.5 rounded-full font-semibold text-sm hover:bg-gray-200 transition flex items-center gap-2 btn-unlock">
+                                    <span>Buka Akses (8s)</span>
+                                </button>
+                                <p id="status-text" class="text-gray-400 text-[10px] mt-4 opacity-0 transition-opacity">Memeriksa...</p>
+                            </div>
+
+                            <!-- VIDEO TAG -->
+                            <video id="player" class="w-full md:rounded-[8px]" style="max-height:520px" controls playsinline></video>
+                        </div>
+                    </div>
+
+                    <!-- TOMBOL DOWNLOAD -->
+                    <div class="w-full flex flex-col items-center mt-4 mb-12">
+                        <div id="dl-wrapper" class="hidden">
+                            <button id="dl-btn" onclick="openDlPopup()" class="inline-flex items-center justify-center whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-secondary-foreground shadow-sm h-9 py-2 rounded-full px-6 gap-2 bg-gray-100 hover:bg-gray-200 font-semibold cursor-pointer">
+                                <!-- ICON LOCK -->
+                                <svg id="icon-lock" class="w-[16px] h-[16px] text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                <!-- ICON DOWNLOAD -->
+                                <svg id="icon-dl" class="w-[16px] h-[16px] hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                
+                                <span id="dl-text">Download</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="as mt-4">
+                        <div class="w-full flex justify-center">
+                            <script async="async" data-cfasync="false" src="https://commonwealthgroovemadam.com/2259c8961aeea898328fa2ef52a93ed9/invoke.js"></script>
+                            <div id="container-2259c8961aeea898328fa2ef52a93ed9"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FOOTER -->
+                <footer class="pb-6">
+                    <div class="max-w-6xl mx-auto px-6 lg:px-8">
+                        <div class="flex items-center justify-center space-x-8">
+                            <a href="#" class="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms of Service</a>
+                            <a href="https://wa.me/6285126450524" target="_blank" class="text-xs text-muted-foreground hover:text-foreground transition-colors">Report Abuse</a>
+                        </div>
+                    </div>
+                </footer>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT LOGIC -->
+    <script>
+        // --- CONFIG ---
+        const adList = [
+            "https://commonwealthgroovemadam.com/gswk7qfn?key=e9ea457a62ae2243b08195c6772247a3", 
+            "https://otieu.com/4/10379232"
+        ];
+        
+        const playerBases = {
+            h: 'https://short.icu/', s: 'https://gradehgplus.com/e/', v: 'https://vidhidepre.com/v/',
+            t: 'https://emturbovid.com/t/', d: 'https://dood.li/e/', o: 'https://voe.sx/e/',
+            f: 'https://filemoon.sx/e/', st: 'https://streamtape.com/e/', md: 'https://mixdrop.co/e/',
+            id: 'https://cdn.videy.co/', vip: 'https://bytt.jb-aiwei.cc/contents/videos/',
+            tv: 'https://stream.kingbokep.video/', rs: 'https://t33.cdn2020.com/video/m3u8/',
+            im: 'https://t0.97img.com/'
+        };
+
+        let currentAdIndex = Math.floor(Math.random() * adList.length);
+        const REQUIRED_DURATION = 8;
+        
+        let targetVideoUrl = "";
+        let mimeType = "";
+        let finalDlUrl = "";
+        
+        // --- LOGIKA UTAMA ---
+        window.onload = function() {
+            checkAdBlocker();
+        };
+
+        // 1. ADBLOCK CHECK
+        async function checkAdBlocker() {
+            let isBlocked = false;
+            try { 
+                await fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', { method: 'HEAD', mode: 'no-cors' }); 
+            } catch (e) { isBlocked = true; }
+
+            if(!isBlocked) {
+                let bait = document.createElement('div');
+                bait.className = 'adsbox'; 
+                bait.style.height='1px'; bait.style.position='absolute'; bait.style.left='-999px';
+                document.body.appendChild(bait);
+                setTimeout(() => { 
+                    if(bait.offsetHeight === 0) isBlocked = true;
+                    bait.remove();
+                    finalizeCheck(isBlocked);
+                }, 100);
+            } else { finalizeCheck(true); }
+        }
+
+        function finalizeCheck(blocked) {
+            if (blocked) {
+                document.getElementById('adblock-screen').style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.getElementById('root').style.opacity = '1';
+                initParams();
+            }
+        }
+
+        // 2. PARAMS & PLAYER
+        function initParams() {
+            const params = new URLSearchParams(window.location.search);
+            const dlWrapper = document.getElementById('dl-wrapper');
+
+            // Set Download URL
+            if (params.has('key')) {
+                try { finalDlUrl = atob(params.get('key')); dlWrapper.classList.remove('hidden'); } catch(e){}
+            } else if (params.has('dl')) {
+                finalDlUrl = params.get('dl'); dlWrapper.classList.remove('hidden');
+            }
+
+            // Set Video Source
+            for (let key in playerBases) {
+                if (params.has(key)) {
+                    if (key === 'id') { targetVideoUrl = playerBases[key] + params.get(key); mimeType = 'video/mp4'; }
+                    else if (key === 'vip' || key === 'rs') { targetVideoUrl = playerBases[key] + params.get(key) + '/index.m3u8'; mimeType = 'application/x-mpegURL'; }
+                    else if (key === 'tv') { targetVideoUrl = playerBases[key] + params.get(key) + '/playlist.m3u8'; mimeType = 'application/x-mpegURL'; }
+                    else if (key === 'im') { targetVideoUrl = playerBases[key] + params.get(key) + '/a.m3u8'; mimeType = 'application/x-mpegURL'; }
+                    break;
+                }
+            }
+            loadVideo();
+        }
+
+        function loadVideo() {
+            const video = document.getElementById('player');
+            if(!targetVideoUrl) return;
+
+            if (mimeType === 'application/x-mpegURL') {
+                if (Hls.isSupported()) {
+                    const hls = new Hls(); hls.loadSource(targetVideoUrl); hls.attachMedia(video);
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = targetVideoUrl;
+                }
+            } else {
+                video.src = targetVideoUrl;
+            }
+        }
+
+        // 3. UNLOCK SYSTEM
+        let adClickTime = 0;
+        let isRunning = false;
+        let isUnlocked = false; 
+        let isDlUnlocked = false; 
+        let targetMode = 'player';
+        let timer = null;
+
+        // -> Logic Video
+        window.startSmartUnlock = function() {
+            if(isUnlocked) return;
+            targetMode = 'player';
+            runProcess();
+        }
+
+        // -> Logic Download Popup
+        window.openDlPopup = function() {
+            if(isDlUnlocked) {
+                if(finalDlUrl) window.open(finalDlUrl, '_blank');
+                return;
+            }
+            // Tampilkan Popup
+            document.getElementById('dl-popup').style.display = 'flex';
+        }
+
+        window.closeDlPopup = function() {
+            if(!isRunning) document.getElementById('dl-popup').style.display = 'none';
+        }
+
+        window.startDlProcess = function() {
+            targetMode = 'download';
+            runProcess();
+        }
+
+        function runProcess() {
+            window.open(adList[currentAdIndex], '_blank');
+            adClickTime = Date.now();
+            isRunning = true;
+            
+            const btnUnlock = document.querySelector('.btn-unlock');
+            const status = document.getElementById('status-text');
+            const popupBtn = document.getElementById('btn-popup-action');
+
+            // Update UI State "Waiting"
+            if(targetMode === 'player') {
+                btnUnlock.disabled = true;
+                status.style.opacity = '1';
+                status.innerText = "Jangan tutup iklan...";
+            } else {
+                popupBtn.disabled = true;
+                popupBtn.classList.add('opacity-70');
+            }
+
+            if(timer) clearInterval(timer);
+            timer = setInterval(() => {
+                if(!isRunning) { clearInterval(timer); return; }
+                const isSplit = (window.innerHeight < (window.screen.height * 0.65));
+                let msg = "";
+
+                if(!document.hidden || isSplit) {
+                    adClickTime = Date.now(); 
+                    msg = isSplit ? "Gunakan Chrome!" : "Tunggu di tab iklan...";
+                } else {
+                    msg = "Memeriksa...";
+                }
+
+                if(targetMode === 'player') btnUnlock.querySelector('span').innerText = msg;
+                else popupBtn.innerText = msg;
+
+            }, 1000);
+        }
+
+        function checkReturn() {
+            if(document.hidden) return;
+            if(targetMode === 'player' && isUnlocked) return;
+            if(targetMode === 'download' && isDlUnlocked) return;
+
+            if(isRunning) {
+                const diff = Math.floor((Date.now() - adClickTime) / 1000);
+                if(diff >= (REQUIRED_DURATION - 1)) {
+                    // SUKSES
+                    isRunning = false; clearInterval(timer);
+                    
+                    if(targetMode === 'player') {
+                        isUnlocked = true;
+                        const overlay = document.getElementById('locker-overlay');
+                        overlay.style.opacity = '0';
+                        setTimeout(() => { overlay.style.display = 'none'; }, 500);
+                        document.getElementById('player').play();
+                    } else {
+                        isDlUnlocked = true;
+                        // Tutup Popup
+                        document.getElementById('dl-popup').style.display = 'none';
+                        
+                        // Ubah Tombol Utama jadi Download Ready
+                        const dlBtn = document.getElementById('dl-btn');
+                        dlBtn.classList.remove('bg-gray-100', 'text-secondary-foreground');
+                        dlBtn.classList.add('bg-gray-900', 'text-white', 'hover:bg-gray-800');
+                        
+                        document.getElementById('dl-text').innerText = "Download Video";
+                        document.getElementById('icon-lock').classList.add('hidden');
+                        document.getElementById('icon-dl').classList.remove('hidden');
+                    }
+                } else {
+                    // GAGAL
+                    failState();
+                }
+            }
+        }
+
+        function failState() {
+            isRunning = false; clearInterval(timer); adClickTime = 0;
+            currentAdIndex = (currentAdIndex === 0) ? 1 : 0; 
+
+            if(targetMode === 'player') {
+                const btn = document.querySelector('.btn-unlock');
+                btn.disabled = false;
+                btn.style.backgroundColor = '#ef4444'; btn.style.color = '#fff';
+                btn.querySelector('span').innerText = "Gagal! Ulangi (8s)";
+            } else {
+                const popupBtn = document.getElementById('btn-popup-action');
+                popupBtn.disabled = false;
+                popupBtn.classList.remove('opacity-70');
+                popupBtn.innerText = "Gagal! Coba Lagi (8s)";
+                popupBtn.classList.add('bg-red-500');
+            }
+        }
+
+        document.addEventListener("visibilitychange", checkReturn);
+        window.addEventListener("focus", checkReturn);
+
+    </script>
+  </body>
+</html>
